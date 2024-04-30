@@ -1,0 +1,21 @@
+# Configuration for Cog ⚙️
+# Reference: https://cog.run/yaml
+
+build:
+  gpu: true
+  cuda: "12.1"
+  system_packages:
+    - "libgl1-mesa-glx"
+    - "libglib2.0-0"
+  python_version: "3.11"
+  python_packages:
+    - "accelerate==0.29.3"
+    - "bitsandbytes==0.43.1"
+    - "pillow==10.3.0"
+    - "torch==2.1.0"
+    - "torchvision"
+    - "transformers==4.40.1"
+  run:
+    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.8.1/pget_Linux_x86_64" && chmod +x /usr/local/bin/pget
+# predict.py defines how predictions are run on your model
+predict: "predict.py:Predictor"
