@@ -15,7 +15,9 @@ build:
     - "torch==2.1.0"
     - "torchvision"
     - "transformers==4.40.1"
+    - "numpy<2"
+
   run:
-    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.8.1/pget_Linux_x86_64" && chmod +x /usr/local/bin/pget
+    - curl -o /usr/local/bin/pget -L "https://github.com/replicate/pget/releases/download/v0.8.2/pget_Linux_x86_64" && chmod +x /usr/local/bin/pget
 # predict.py defines how predictions are run on your model
 predict: "predict.py:Predictor"

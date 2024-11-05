@@ -49,6 +49,7 @@ class Predictor(BasePredictor):
     def setup(self) -> None:
         """Load the model into memory to make running multiple predictions efficient"""
         # Download model weights
+        t1 = time.time()
         if not os.path.exists(MODEL_CACHE):
             download_weights(MODEL_URL, MODEL_CACHE)
         if not os.path.exists(EMBED_CACHE):
@@ -62,23 +63,30 @@ class Predictor(BasePredictor):
             cache_dir=MODEL_CACHE
         )
         self.model = LlamaForCausalLM.from_pretrained(
-            BASE_MODEL,
+            MODEL_CACHE,
             torch_dtype=torch.float16,
             device_map="auto",
             quantization_config=bnb_config,
-            cache_dir=MODEL_CACHE
         )
         for param in self.model.base_model.parameters():
             param.requires_grad = False
 
         vision_model = SiglipVisionModel.from_pretrained(
-            EMBED_MODEL, torch_dtype=torch.float16
+            EMBED_CACHE,
+            torch_dtype=torch.float16,
         )
         self.processor = SiglipImageProcessor.from_pretrained(
-            EMBED_MODEL,
-            cache_dir=EMBED_CACHE
+            EMBED_CACHE,
         )
         self.vision_model = vision_model.to("cuda")
+        mm_hidden_size=1152
+        hidden_size=4096
+        projection_module = ProjectionModule(mm_hidden_size, hidden_size)
+        checkpoint = torch.load("./mm_projector.bin")
+        checkpoint = {k.replace("mm_projector.", ""): v for k, v in checkpoint.items()}
+        projection_module.load_state_dict(checkpoint)
+        self.projection_module = projection_module.to('cuda').half()
+        print("setup took: ", time.time() - t1)
 
     def tokenizer_image_token(self, prompt, tokenizer, image_token_index=-200):
         prompt_chunks = prompt.split("<image>")
@@ -118,13 +126,6 @@ class Predictor(BasePredictor):
         prompt: str = Input(description="Input prompt", default="Describe the image"),
     ) -> ConcatenateIterator[str]:
         """Run a single prediction on the model"""
-        mm_hidden_size=1152
-        hidden_size=4096
-        projection_module = ProjectionModule(mm_hidden_size, hidden_size)
-        checkpoint = torch.load("./mm_projector.bin")
-        checkpoint = {k.replace("mm_projector.", ""): v for k, v in checkpoint.items()}
-        projection_module.load_state_dict(checkpoint)
-        projection_module = projection_module.to('cuda').half()
 
         img = Image.open(image).convert("RGB")
         self.tokenizer.eos_token = "<|eot_id|>"
@@ -148,7 +149,7 @@ class Predictor(BasePredictor):
             output_hidden_states=True,
         )
         image_features = image_forward_outs.hidden_states[-2]
-        projected_embeddings = projection_module(image_features).to("cuda")
+        projected_embeddings = self.projection_module(image_features).to("cuda")
         embedding_layer = self.model.get_input_embeddings()
         new_embeds, attn_mask = self.process_tensors(input_ids, projected_embeddings, embedding_layer)
         attn_mask = attn_mask.to('cuda')
